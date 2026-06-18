@@ -75,6 +75,35 @@ list() {
   printf "  %-9s %-6s %s\n" "macmini" "HDMI"  "0x11 (17)$mmark"
 }
 
+hotkey() {
+  # Guide setup of a global toggle hotkey via the built-in Shortcuts app.
+  # macOS has no CLI to assign a Shortcuts keyboard shortcut, so the key
+  # binding itself is a one-time manual step; we automate everything else.
+  local prefix cmd
+  prefix=$(dirname "$(command -v monitor-input 2>/dev/null || echo /opt/homebrew/bin/monitor-input)")
+  cmd=$(printf 'PATH="%s:$PATH" %s/monitor-input toggle' "$prefix" "$prefix")
+  if printf '%s' "$cmd" | pbcopy 2>/dev/null; then
+    echo "Copied this command to your clipboard:"
+  else
+    echo "Use this command:"
+  fi
+  echo "    $cmd"
+  open -a Shortcuts 2>/dev/null || true
+  cat <<EOF
+
+Set up the toggle hotkey in the Shortcuts app (one-time, ~30s):
+
+  1. Click  +  to create a new shortcut; name it "Toggle Monitor".
+  2. Add the action "Run Shell Script" (search for it on the right).
+  3. Click the script box and paste (Cmd-V) the command above.
+  4. Click the  (i)  button -> Add Keyboard Shortcut -> press  Ctrl-Cmd-M.
+  5. First run: click Allow when macOS asks permission to run scripts.
+
+Note: macOS provides no way to assign a Shortcuts hotkey from the command
+line, so step 4 must be done by hand once on each machine.
+EOF
+}
+
 usage() {
   cat <<EOF
 usage: monitor-input <command>
@@ -84,6 +113,7 @@ usage: monitor-input <command>
   toggle    switch to whichever input was not last set
   status    show the input this tool last set
   list      list connected displays and configured inputs
+  hotkey    set up a global toggle hotkey (Shortcuts app)
   help      show this message
 EOF
 }
@@ -101,6 +131,7 @@ case "$cmd" in
     ;;
   status|get)  status;;
   list|ls)     list;;
+  hotkey)      hotkey;;
   help|-h|--help) usage;;
   *) usage; exit 1;;
 esac

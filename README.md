@@ -29,6 +29,21 @@ monitor-input list       # list connected displays and configured inputs
 
 Aliases added to `~/.zshrc`: `mlaptop`, `mmini`, `mtoggle`, `mstatus`.
 
+## Global toggle hotkey
+
+```sh
+monitor-input hotkey
+```
+
+This copies the right shell command to your clipboard, opens the built-in
+**Shortcuts** app, and prints the steps to bind **⌃⌘M** (Control-Command-M) to
+`monitor-input toggle` — no extra software.
+
+> macOS provides no command-line way to assign a Shortcuts keyboard shortcut, so
+> the final key-binding step is a one-time manual click (the helper automates
+> everything around it). If you want a *true* `fn`-based hotkey instead, that
+> requires [Karabiner-Elements](https://karabiner-elements.pqrs.org/).
+
 The labels are **absolute** — `monitor-input macmini` always selects the HDMI input
 regardless of which machine you run it from, so installing on both machines lets you
 hand the screen back and forth from either keyboard.
