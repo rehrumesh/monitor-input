@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+#
+# monitor-input — switch the input source of the Dell U2724DE via DDC/CI.
+#
+# Inputs on this monitor:
+#   laptop  / usb-c  -> VCP 0x60 value 0x19 (25)  (laptop, USB-C DisplayPort)
+#   macmini / hdmi   -> VCP 0x60 value 0x11 (17)  (Mac mini, HDMI)
+#
+# Requires: m1ddc  (brew install m1ddc)
+
+set -euo pipefail
+
+MONITOR_MATCH="DELL U2724DE"   # substring matched against `m1ddc display list`
+USBC_VALUE=25                  # 0x19  laptop
+HDMI_VALUE=17                  # 0x11  Mac mini
+
+die() { echo "error: $*" >&2; exit 1; }
+
+command -v m1ddc >/dev/null 2>&1 || die "m1ddc not found (brew install m1ddc)"
+
+# Resolve the Dell's display index from the list, so it survives reordering.
+find_display() {
+  local line
+  line=$(m1ddc display list 2>/dev/null | grep -F "$MONITOR_MATCH" | head -n1) \
+    || die "monitor '$MONITOR_MATCH' not found in: m1ddc display list"
+  [ -n "$line" ] || die "monitor '$MONITOR_MATCH' not found"
+  # lines look like: "[2] DELL U2724DE (UUID...)"
+  echo "$line" | sed -E 's/^\[([0-9]+)\].*/\1/'
+}
+
+set_input() {
+  local val="$1" disp
+  disp=$(find_display)
+  m1ddc display "$disp" set input "$val" >/dev/null
+}
+
+get_input() {
+  local disp; disp=$(find_display)
+  m1ddc display "$disp" get input 2>/dev/null
+}
+
+status() {
+  # The U2724DE reports unreliably; sample a few times and take a non-zero read.
+  local v i
+  for i in 1 2 3 4 5 6; do
+    v=$(get_input || true)
+    [ -n "${v:-}" ] && [ "$v" != "0" ] && break
+    sleep 0.2
+  done
+  case "${v:-}" in
+    "$USBC_VALUE") echo "laptop (USB-C, $v)";;
+    "$HDMI_VALUE") echo "macmini (HDMI, $v)";;
+    ""|0)          echo "unknown (monitor did not report)";;
+    *)             echo "other (value $v)";;
+  esac
+}
+
+usage() {
+  cat <<EOF
+usage: monitor-input <command>
+
+  laptop    switch Dell to the laptop   (USB-C)
+  macmini   switch Dell to the Mac mini (HDMI)
+  toggle    switch to whichever input is not active
+  status    show the current input
+  help      show this message
+EOF
+}
+
+cmd="${1:-help}"
+case "$cmd" in
+  laptop|usbc|usb-c)          set_input "$USBC_VALUE"; echo "-> laptop (USB-C)";;
+  macmini|mac-mini|hdmi|mini) set_input "$HDMI_VALUE"; echo "-> macmini (HDMI)";;
+  toggle)
+    cur=$(status)
+    if [[ "$cur" == laptop* ]]; then
+      set_input "$HDMI_VALUE"; echo "-> macmini (HDMI)"
+    else
+      set_input "$USBC_VALUE"; echo "-> laptop (USB-C)"
+    fi
+    ;;
+  status|get)  status;;
+  help|-h|--help) usage;;
+  *) usage; exit 1;;
+esac
