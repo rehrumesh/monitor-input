@@ -24,6 +24,7 @@ monitor-input laptop     # switch Dell to the laptop   (USB-C)
 monitor-input macmini    # switch Dell to the Mac mini (HDMI)
 monitor-input toggle     # flip to the other input
 monitor-input status     # show the current input
+monitor-input list       # list connected displays and configured inputs
 ```
 
 Aliases added to `~/.zshrc`: `mlaptop`, `mmini`, `mtoggle`, `mstatus`.
@@ -44,6 +45,15 @@ Confirmed values for the Dell U2724DE:
 
 To adapt it, edit `MONITOR_MATCH`, `USBC_VALUE`, and `HDMI_VALUE` at the top of the
 `monitor-input` script.
+
+### A note on `status` / `list`
+
+This Dell does **not** report its current input reliably over DDC (reads return `0`
+or a value unrelated to what was written). *Setting* the input is always reliable, so
+the tool records the input it last set in a small state file
+(`~/.local/state/monitor-input/last`). `status`, `list`, and `toggle` use that record.
+Switching with the monitor's own buttons or from another machine will leave that record
+out of date — re-run `monitor-input laptop`/`macmini` to resync.
 
 ## Manual install
 

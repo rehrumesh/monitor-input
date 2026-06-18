@@ -45,6 +45,12 @@ cat > "$TARGET" <<'SCRIPT'
 #   laptop  / usb-c  -> VCP 0x60 value 0x19 (25)  (laptop, USB-C DisplayPort)
 #   macmini / hdmi   -> VCP 0x60 value 0x11 (17)  (Mac mini, HDMI)
 #
+# Note: this Dell does NOT report its current input reliably over DDC (reads
+# return 0 or a value unrelated to what was written), so `status`/`list` show
+# the input this tool last *set* on this machine, tracked in a small state
+# file. Switching with the monitor's own buttons or from another machine will
+# leave that out of date. Switching (the write) is always reliable.
+#
 # Requires: m1ddc  (brew install m1ddc)
 
 set -euo pipefail
@@ -52,6 +58,7 @@ set -euo pipefail
 MONITOR_MATCH="DELL U2724DE"   # substring matched against `m1ddc display list`
 USBC_VALUE=25                  # 0x19  laptop
 HDMI_VALUE=17                  # 0x11  Mac mini
+STATE_FILE="${XDG_STATE_HOME:-$HOME/.local/state}/monitor-input/last"
 
 die() { echo "error: $*" >&2; exit 1; }
 
@@ -67,31 +74,44 @@ find_display() {
   echo "$line" | sed -E 's/^\[([0-9]+)\].*/\1/'
 }
 
-set_input() {
-  local val="$1" disp
+# switch_to <name>  (name is "laptop" or "macmini")
+switch_to() {
+  local name="$1" val disp
+  case "$name" in
+    laptop)  val="$USBC_VALUE";;
+    macmini) val="$HDMI_VALUE";;
+    *) die "unknown input '$name'";;
+  esac
   disp=$(find_display)
   m1ddc display "$disp" set input "$val" >/dev/null
+  mkdir -p "$(dirname "$STATE_FILE")" 2>/dev/null || true
+  echo "$name" > "$STATE_FILE" 2>/dev/null || true
 }
 
-get_input() {
-  local disp; disp=$(find_display)
-  m1ddc display "$disp" get input 2>/dev/null
+# Logical name of the input this tool last set on this machine, or "unknown".
+current() {
+  [ -f "$STATE_FILE" ] && head -n1 "$STATE_FILE" 2>/dev/null || echo "unknown"
 }
 
 status() {
-  # The U2724DE reports unreliably; sample a few times and take a non-zero read.
-  local v i
-  for i in 1 2 3 4 5 6; do
-    v=$(get_input || true)
-    [ -n "${v:-}" ] && [ "$v" != "0" ] && break
-    sleep 0.2
-  done
-  case "${v:-}" in
-    "$USBC_VALUE") echo "laptop (USB-C, $v)";;
-    "$HDMI_VALUE") echo "macmini (HDMI, $v)";;
-    ""|0)          echo "unknown (monitor did not report)";;
-    *)             echo "other (value $v)";;
+  case "$(current)" in
+    laptop)  echo "laptop (USB-C)   [last set by this tool]";;
+    macmini) echo "macmini (HDMI)   [last set by this tool]";;
+    *)       echo "unknown (no switch recorded on this machine yet)";;
   esac
+}
+
+list() {
+  echo "Connected displays (m1ddc):"
+  m1ddc display list 2>/dev/null | sed 's/^/  /'
+  echo
+  echo "Configured inputs for '$MONITOR_MATCH':"
+  local cur lmark="" mmark=""
+  cur=$(current)
+  [ "$cur" = "laptop" ]  && lmark="  <- last set"
+  [ "$cur" = "macmini" ] && mmark="  <- last set"
+  printf "  %-9s %-6s %s\n" "laptop"  "USB-C" "0x19 (25)$lmark"
+  printf "  %-9s %-6s %s\n" "macmini" "HDMI"  "0x11 (17)$mmark"
 }
 
 usage() {
@@ -100,25 +120,26 @@ usage: monitor-input <command>
 
   laptop    switch Dell to the laptop   (USB-C)
   macmini   switch Dell to the Mac mini (HDMI)
-  toggle    switch to whichever input is not active
-  status    show the current input
+  toggle    switch to whichever input was not last set
+  status    show the input this tool last set
+  list      list connected displays and configured inputs
   help      show this message
 EOF
 }
 
 cmd="${1:-help}"
 case "$cmd" in
-  laptop|usbc|usb-c)          set_input "$USBC_VALUE"; echo "-> laptop (USB-C)";;
-  macmini|mac-mini|hdmi|mini) set_input "$HDMI_VALUE"; echo "-> macmini (HDMI)";;
+  laptop|usbc|usb-c)          switch_to laptop;  echo "-> laptop (USB-C)";;
+  macmini|mac-mini|hdmi|mini) switch_to macmini; echo "-> macmini (HDMI)";;
   toggle)
-    cur=$(status)
-    if [[ "$cur" == laptop* ]]; then
-      set_input "$HDMI_VALUE"; echo "-> macmini (HDMI)"
+    if [ "$(current)" = "laptop" ]; then
+      switch_to macmini; echo "-> macmini (HDMI)"
     else
-      set_input "$USBC_VALUE"; echo "-> laptop (USB-C)"
+      switch_to laptop;  echo "-> laptop (USB-C)"
     fi
     ;;
   status|get)  status;;
+  list|ls)     list;;
   help|-h|--help) usage;;
   *) usage; exit 1;;
 esac
